@@ -1,25 +1,23 @@
 from flask import Flask, render_template, request, escape
 from vsearch import search4letters
 import MySQLdb
+from DBcm import UseDatabase
 
 app = Flask(__name__)
 
+app.config['conn'] = MySQLdb.connect('127.0.0.1', 'vsearch', 'vsearchpasswd', 'vsearchlogDB',)
 
 def log_request(req: 'flask_request', res: str) -> None:
-    conn = MySQLdb.connect('127.0.0.1', 'vsearch', 'vsearchpasswd', 'vsearchlogDB')
-    cursor = conn.cursor()
-    _SQL = """insert into log
-              (phrase, letters, ip, browser_string, results) 
-              values
-              (%s, %s, %s, %s, %s)"""
-    cursor.execute(_SQL, (req.form['phrase'],
-                          req.form['letters'],
-                          req.remote_addr,
-                          req.user_agent.browser,
-                          res, ))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    with UseDatabase(app.config['conn']) as cursor:
+        _SQL = """insert into log
+                      (phrase, letters, ip, browser_string, results) 
+                      values
+                      (%s, %s, %s, %s, %s)"""
+        cursor.execute(_SQL, (req.form['phrase'],
+                              req.form['letters'],
+                              req.remote_addr,
+                              req.user_agent.browser,
+                              res, ))
 
 
 @app.route('/search4', methods=['POST'])
@@ -40,13 +38,11 @@ def entry_page() -> 'html':
 
 @app.route('/viewlog')
 def view_the_log() -> 'html':
-    contents = []
-    with open('vsearch.log') as log:
-        for chore in log:
-            contents.append([])
-            for item in chore.split('|'):
-                contents[-1].append(escape(item))
-    titles = ('Form Data', 'Remote_addr', 'User_agent', 'Results')
+    with UseDatabase(app.config['conn']) as cursor:
+        _SQL = """select phrase, letters, ip, browser_string, results from log"""
+        cursor.execute(_SQL)
+        contents = cursor.fetchall() #fetchone()-читает первый символ, fetchall() - все символы
+    titles = ('Phrase', 'Form Data', 'Remote_addr', 'User_agent', 'Results')
     return render_template('viewlog.html', the_title = 'View Log', the_row_titles = titles, the_data = contents,)
 
 
